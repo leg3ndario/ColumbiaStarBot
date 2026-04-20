@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Richland County SC – Motivated Seller Leads (Columbia Star)</title>
+<style>
+:root {
+  --bg:      #0b0d18;
+  --s1:      #13162a;
+  --s2:      #1c2038;
+  --bd:      #252a45;
+  --acc:     #6d62ff;
+  --acc2:    #ff637a;
+  --grn:     #2dd4bf;
+  --ylw:     #fbbf24;
+  --red:     #f87171;
+  --blu:     #60a5fa;
+  --txt:     #e2e8f0;
+  --mut:     #8892a4;
+  --r:       8px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--txt); font: 13px/1.6 'Inter', -apple-system, sans-serif; }
+a { color: var(--acc); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Header */
+header {
+  background: var(--s1); border-bottom: 1px solid var(--bd);
+  padding: 14px 22px; display: flex; align-items: center;
+  justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  position: sticky; top: 0; z-index: 20;
+}
+.hl h1 { font-size: 16px; font-weight: 700; }
+.hl h1 em { color: var(--acc); font-style: normal; }
+.hl .sub { font-size: 11px; color: var(--mut); margin-top: 2px; }
+.hr { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Buttons */
+button {
+  border: none; border-radius: var(--r); padding: 7px 13px;
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .15s;
+}
+button:hover { opacity: .82; }
+.bp { background: var(--acc); color: #fff; }
+.bs { background: var(--s2); border: 1px solid var(--bd); color: var(--txt); }
+.bg { background: rgba(45,212,191,.12); border: 1px solid var(--grn); color: var(--grn); }
+
+/* Stats */
+.stats { display: flex; flex-wrap: wrap; gap: 9px; padding: 12px 22px 0; }
+.stat { background: var(--s1); border: 1px solid var(--bd); border-radius: var(--r); padding: 10px 15px; min-width: 105px; }
+.stat .v { font-size: 24px; font-weight: 800; color: var(--acc); }
+.stat .l { font-size: 10px; color: var(--mut); text-transform: uppercase; letter-spacing: .05em; margin-top: 3px; }
+
+/* Controls */
+.controls { display: flex; flex-wrap: wrap; gap: 7px; padding: 10px 22px; align-items: center; }
+input[type="text"], select {
+  background: var(--s2); border: 1px solid var(--bd); color: var(--txt);
+  border-radius: var(--r); padding: 6px 10px; font-size: 12px; outline: none;
+  transition: border-color .2s;
+}
+input:focus, select:focus { border-color: var(--acc); }
+#q { width: 210px; }
+.cnt { font-size: 11px; color: var(--mut); margin-left: auto; }
+
+/* Table */
+.wrap { padding: 0 22px 44px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  background: var(--s1); color: var(--mut);
+  text-transform: uppercase; font-size: 10px; letter-spacing: .05em;
+  padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--bd);
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+thead th:hover { color: var(--txt); }
+thead th.asc::after  { content: " ▲"; color: var(--acc); }
+thead th.desc::after { content: " ▼"; color: var(--acc); }
+tbody tr { border-bottom: 1px solid var(--bd); transition: background .1s; }
+tbody tr:hover { background: var(--s2); cursor: pointer; }
+td { padding: 9px 10px; vertical-align: top; max-width: 195px; }
+
+/* Score badge */
+.sb { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; font-weight: 800; font-size: 12.5px; }
+.sh { background: rgba(45,212,191,.1); color: var(--grn); border: 2px solid var(--grn); }
+.sm { background: rgba(251,191,36,.1); color: var(--ylw); border: 2px solid var(--ylw); }
+.sl { background: rgba(248,113,113,.1); color: var(--red); border: 2px solid var(--red); }
+
+/* Flag chips */
+.flags { display: flex; flex-wrap: wrap; gap: 3px; }
+.flag { font-size: 9px; padding: 2px 6px; border-radius: 100px; font-weight: 700; white-space: nowrap; }
+.fpf { background: rgba(248,113,113,.18); color: var(--red); }
+.fj  { background: rgba(251,191,36,.18);  color: var(--ylw); }
+.ft  { background: rgba(109,98,255,.2);   color: var(--acc); }
+.fl  { background: rgba(45,212,191,.15);  color: var(--grn); }
+.fp  { background: rgba(255,99,122,.18);  color: var(--acc2); }
+.fo  { background: rgba(148,163,184,.12); color: var(--mut); }
+
+/* Category pill */
+.cp { display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: .03em; }
+
+/* Pagination */
+.pag { display: flex; justify-content: center; gap: 6px; padding: 0 22px 28px; flex-wrap: wrap; }
+.pag button { background: var(--s2); border: 1px solid var(--bd); color: var(--txt); min-width: 32px; padding: 5px 8px; font-size: 11px; }
+.pag button.cur { background: var(--acc); border-color: var(--acc); color: #fff; }
+
+/* Modal */
+.mbg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; }
+.mbg.open { display: flex; }
+.modal { background: var(--s1); border: 1px solid var(--bd); border-radius: 12px; padding: 22px; max-width: 560px; width: 95%; max-height: 85vh; overflow-y: auto; }
+.modal h2 { font-size: 14px; margin-bottom: 12px; }
+.modal table td { max-width: none; font-size: 12px; padding: 4px 7px; }
+.modal table td:first-child { color: var(--mut); white-space: nowrap; width: 140px; }
+.mclose { float: right; background: var(--s2); border: 1px solid var(--bd); color: var(--txt); border-radius: var(--r); padding: 3px 9px; font-size: 11px; cursor: pointer; margin-top: -3px; }
+
+/* Toast */
+.toast { position: fixed; bottom: 18px; right: 18px; background: var(--s1); border: 1px solid var(--bd); color: var(--txt); border-radius: var(--r); padding: 9px 15px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.5); transform: translateY(50px); opacity: 0; transition: all .3s; z-index: 200; }
+.toast.on { transform: translateY(0); opacity: 1; }
+
+/* Empty */
+.empty { text-align: center; padding: 56px 22px; color: var(--mut); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hl">
+    <h1>Richland County SC — <em>Motivated Seller Leads</em></h1>
+    <div class="sub" id="meta">Loading…</div>
+  </div>
+  <div class="hr">
+    <button class="bg" onclick="exportCSV()">⬇ Export GHL CSV</button>
+    <button class="bp" onclick="openSource()">📰 Columbia Star</button>
+    <button class="bs" onclick="location.reload()">↺ Refresh</button>
+  </div>
+</header>
+
+<div class="stats" id="stats"></div>
+
+<div class="controls">
+  <input type="text" id="q" placeholder="Search owner, address, case #…">
+  <select id="fType"><option value="">All Types</option></select>
+  <select id="fCat">
+    <option value="">All Categories</option>
+    <option value="preforeclosure">Pre-Foreclosure</option>
+    <option value="judgment">Judgment</option>
+    <option value="tax_lien">Tax Lien</option>
+    <option value="lien">Lien</option>
+    <option value="probate">Probate</option>
+    <option value="tax">Tax Deed</option>
+    <option value="construction">Notice of Commencement</option>
+    <option value="release">Release</option>
+  </select>
+  <select id="fScore">
+    <option value="0">All Scores</option>
+    <option value="70">Score ≥ 70</option>
+    <option value="60">Score ≥ 60</option>
+    <option value="50">Score ≥ 50</option>
+    <option value="40">Score ≥ 40</option>
+  </select>
+  <select id="fAddr">
+    <option value="">All Records</option>
+    <option value="1">Has Address</option>
+  </select>
+  <select id="ps">
+    <option value="25">25/page</option>
+    <option value="50">50/page</option>
+    <option value="100">100/page</option>
+  </select>
+  <span class="cnt" id="cnt"></span>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead>
+      <tr>
+        <th onclick="sort('score')">Score</th>
+        <th onclick="sort('filed')">Published</th>
+        <th onclick="sort('doc_type')">Type</th>
+        <th onclick="sort('owner')">Owner / Defendant</th>
+        <th onclick="sort('grantee')">Plaintiff / Lender</th>
+        <th onclick="sort('prop_address')">Property Address</th>
+        <th onclick="sort('amount')">Amount</th>
+        <th>Flags</th>
+        <th onclick="sort('doc_num')">Case #</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty" id="empty" style="display:none">No leads match your filters.</div>
+</div>
+
+<div class="pag" id="pag"></div>
+
+<!-- Modal -->
+<div class="mbg" id="mbg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="mclose" onclick="closeModal()">✕</button>
+    <h2 id="mtitle">Case Detail</h2>
+    <table id="mtable" style="width:100%;border-collapse:collapse;"></table>
+    <div style="margin-top:14px;">
+      <a id="mlink" href="#" target="_blank" style="display:inline-block;padding:7px 13px;border-radius:8px;font-size:12px;font-weight:600;background:var(--acc);color:#fff;">
+        View Source Article →
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let ALL=[], FILT=[], sk='score', sd='desc', pg=1;
+
+const FC = {
+  'Lis pendens':'fpf','Pre-foreclosure':'fpf',
+  'Judgment lien':'fj','Tax lien':'ft',
+  'Mechanic lien':'fl','Probate / estate':'fp',
+  'LLC / corp owner':'fo','New this week':'fo',
+};
+const CC = {
+  preforeclosure:'#f87171',judgment:'#fbbf24',tax_lien:'#6d62ff',
+  lien:'#2dd4bf',probate:'#ff637a',tax:'#6d62ff',
+  construction:'#60a5fa',release:'#8892a4',
+};
+
+async function init() {
+  try {
+    const d = await (await fetch('records.json?'+Date.now())).json();
+    ALL = d.records || [];
+    const fi = d.fetched_at ? new Date(d.fetched_at).toLocaleString() : '—';
+    document.getElementById('meta').textContent =
+      `Updated ${fi} · ${d.date_range?.from||'—'} – ${d.date_range?.to||'—'} · Columbia Star Public Notices`;
+
+    const tsel = document.getElementById('fType');
+    [...new Set(ALL.map(r=>r.doc_type))].sort().forEach(t => {
+      const o = document.createElement('option'); o.value=t; o.textContent=t; tsel.appendChild(o);
+    });
+
+    const r = d.records||[];
+    document.getElementById('stats').innerHTML = [
+      {v:d.total||0,       l:'Total Leads'},
+      {v:r.filter(x=>x.score>=60).length, l:'Score ≥ 60'},
+      {v:r.filter(x=>x.cat==='preforeclosure').length, l:'Pre-Foreclosure'},
+      {v:r.filter(x=>x.cat==='judgment').length,       l:'Judgments'},
+      {v:r.filter(x=>['tax_lien','tax'].includes(x.cat)).length, l:'Tax / IRS Liens'},
+      {v:r.filter(x=>x.cat==='lien').length,           l:'Liens'},
+      {v:r.filter(x=>x.cat==='probate').length,         l:'Probate'},
+      {v:d.with_address||0, l:'Have Address'},
+    ].map(c=>`<div class="stat"><div class="v">${c.v}</div><div class="l">${c.l}</div></div>`).join('');
+
+    filter();
+  } catch(e) {
+    document.getElementById('meta').textContent='Error loading records.json – run scraper first';
+  }
+}
+
+function filter() {
+  const q  = document.getElementById('q').value.toLowerCase();
+  const ft = document.getElementById('fType').value;
+  const fc = document.getElementById('fCat').value;
+  const fs = parseInt(document.getElementById('fScore').value)||0;
+  const fa = document.getElementById('fAddr').value;
+
+  FILT = ALL.filter(r => {
+    if (ft && r.doc_type !== ft) return false;
+    if (fc && r.cat !== fc)      return false;
+    if (r.score < fs)            return false;
+    if (fa && !(r.prop_address||r.mail_address)) return false;
+    if (q) {
+      const hay = [r.owner,r.grantee,r.doc_num,r.prop_address,
+                   r.mail_address,r.legal,r.cat_label,r.doc_type,
+                   ...(r.flags||[])].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  FILT.sort((a,b) => {
+    let va=a[sk], vb=b[sk];
+    if(va==null)va=''; if(vb==null)vb='';
+    if(typeof va==='number') return sd==='asc'?va-vb:vb-va;
+    va=String(va).toLowerCase(); vb=String(vb).toLowerCase();
+    return sd==='asc'?va.localeCompare(vb):vb.localeCompare(va);
+  });
+
+  pg=1;
+  document.getElementById('cnt').textContent = `${FILT.length.toLocaleString()} of ${ALL.length.toLocaleString()} leads`;
+  render(); renderPag();
+}
+
+function render() {
+  const ps = parseInt(document.getElementById('ps').value)||25;
+  const start = (pg-1)*ps;
+  const page  = FILT.slice(start, start+ps);
+  const tbody = document.getElementById('tbody');
+  const empty = document.getElementById('empty');
+  if (!FILT.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  tbody.innerHTML = page.map((r,i) => {
+    const sc  = r.score||0;
+    const cls = sc>=60?'sh':sc>=40?'sm':'sl';
+    const flags = (r.flags||[]).map(f=>`<span class="flag ${FC[f]||'fo'}">${f}</span>`).join('');
+    const amt = r.amount!=null?'$'+Number(r.amount).toLocaleString():'—';
+    const col = CC[r.cat]||'#8892a4';
+    const pill = `<span class="cp" style="background:${col}22;color:${col};border:1px solid ${col}55">${r.cat_label||r.cat}</span>`;
+    const pa  = [r.prop_address,r.prop_city,r.prop_zip].filter(Boolean).join(', ')||'—';
+    const link = r.clerk_url
+      ? `<a href="${r.clerk_url}" target="_blank" onclick="event.stopPropagation()">${esc(r.doc_num||'View')}</a>`
+      : esc(r.doc_num||'—');
+
+    return `<tr onclick="showDetail(${start+i})">
+      <td><span class="sb ${cls}">${sc}</span></td>
+      <td style="white-space:nowrap">${r.filed||'—'}</td>
+      <td><strong>${r.doc_type}</strong><br>${pill}</td>
+      <td>${esc(r.owner||'—')}</td>
+      <td style="color:var(--mut);font-size:11px">${esc(r.grantee||'—')}</td>
+      <td style="font-size:11px">${esc(pa)}</td>
+      <td style="white-space:nowrap">${amt}</td>
+      <td><div class="flags">${flags}</div></td>
+      <td style="white-space:nowrap;font-size:11px">${link}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPag() {
+  const ps  = parseInt(document.getElementById('ps').value)||25;
+  const tot = Math.ceil(FILT.length/ps);
+  const el  = document.getElementById('pag');
+  if (tot<=1) { el.innerHTML=''; return; }
+  let h='';
+  const lo=Math.max(1,pg-3), hi=Math.min(tot,pg+3);
+  if(lo>1) h+=`<button onclick="go(1)">1</button>`;
+  if(lo>2) h+=`<button disabled>…</button>`;
+  for(let i=lo;i<=hi;i++) h+=`<button class="${i===pg?'cur':''}" onclick="go(${i})">${i}</button>`;
+  if(hi<tot-1) h+=`<button disabled>…</button>`;
+  if(hi<tot)   h+=`<button onclick="go(${tot})">${tot}</button>`;
+  el.innerHTML=h;
+}
+
+function go(n) { pg=n; render(); renderPag(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+function sort(k) {
+  if(sk===k) sd=sd==='asc'?'desc':'asc';
+  else { sk=k; sd=k==='score'?'desc':'asc'; }
+  document.querySelectorAll('thead th').forEach(th => {
+    th.classList.remove('asc','desc');
+    if(th.getAttribute('onclick')===`sort('${k}')`) th.classList.add(sd);
+  });
+  filter();
+}
+
+function showDetail(i) {
+  const r=FILT[i]; if(!r) return;
+  document.getElementById('mtitle').textContent =
+    `${r.doc_type} – ${r.cat_label}  |  ${r.doc_num||'—'}`;
+  const rows=[
+    ['Published', r.filed],
+    ['Owner / Defendant', r.owner],
+    ['Plaintiff / Lender', r.grantee],
+    ['Amount', r.amount!=null?'$'+Number(r.amount).toLocaleString():'—'],
+    ['Legal / Case Type', r.legal],
+    ['Property Address', [r.prop_address,r.prop_city,r.prop_state,r.prop_zip].filter(Boolean).join(', ')],
+    ['Mailing Address', [r.mail_address,r.mail_city,r.mail_state,r.mail_zip].filter(Boolean).join(', ')],
+    ['Seller Score', r.score],
+    ['Flags', (r.flags||[]).join(' · ')],
+    ['Case / Doc #', r.doc_num],
+  ];
+  document.getElementById('mtable').innerHTML =
+    rows.map(([l,v])=>`<tr><td>${l}</td><td>${esc(v||'—')}</td></tr>`).join('');
+  const ml=document.getElementById('mlink');
+  ml.href=r.clerk_url||'#';
+  ml.style.display=r.clerk_url?'inline-block':'none';
+  document.getElementById('mbg').classList.add('open');
+}
+function closeModal() { document.getElementById('mbg').classList.remove('open'); }
+
+function exportCSV() {
+  const cols=['First Name','Last Name','Mailing Address','Mailing City','Mailing State','Mailing Zip',
+    'Property Address','Property City','Property State','Property Zip',
+    'Lead Type','Document Type','Date Filed','Document Number',
+    'Amount/Debt Owed','Seller Score','Motivated Seller Flags','Source','Public Records URL'];
+  const lines=[cols.join(',')];
+  FILT.forEach(r => {
+    const pts=(r.owner||'').split(' ');
+    lines.push([
+      pts[0]||'', pts.slice(1).join(' '),
+      r.mail_address||'',r.mail_city||'',r.mail_state||'SC',r.mail_zip||'',
+      r.prop_address||'',r.prop_city||'',r.prop_state||'SC',r.prop_zip||'',
+      r.cat_label||'',r.doc_type||'',r.filed||'',r.doc_num||'',
+      r.amount!=null?r.amount:'',r.score||0,
+      (r.flags||[]).join('; '),
+      'Columbia Star – Richland County SC',r.clerk_url||''
+    ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  });
+  const a=Object.assign(document.createElement('a'),{
+    href:URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'})),
+    download:`richland_leads_${new Date().toISOString().slice(0,10)}.csv`
+  });
+  a.click();
+  toast(`Exported ${FILT.length} leads`);
+}
+
+function openSource() { window.open('https://www.thecolumbiastar.com/category/public-notices/','_blank'); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(m) {
+  const t=document.getElementById('toast');
+  t.textContent=m; t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'),3000);
+}
+
+['q','fType','fCat','fScore','fAddr'].forEach(id=>document.getElementById(id).addEventListener('input',filter));
+document.getElementById('ps').addEventListener('change',()=>{pg=1;render();renderPag();});
+
+init();
+</script>
+</body>
+</html>
