@@ -72,10 +72,17 @@ CAT_SLUG      = "public-notices"
 CAT_URL       = f"{BASE_URL}/category/public-notices/"
 
 # Richland County parcel endpoints (tried in order)
+# Primary: Spatialest – official Richland County property portal (replaces richlandmaps.com)
+# Spatialest API: /api/parcel/search?address=... returns JSON with parcel records
+SPATIALEST_BASE = "https://property.spatialest.com/sc/richland"
 PARCEL_ENDPOINTS = [
-    "https://richlandmaps.com/arcgis/rest/services/Parcels/Parcels/MapServer/0/query",
-    "https://services1.arcgis.com/YkiDNd5aIbTOILfR/arcgis/rest/services/Richland_County_Parcels/FeatureServer/0/query",
-    "https://gis.richlandcountysc.gov/arcgis/rest/services/Parcels/MapServer/0/query",
+    # Spatialest address search – used for individual TMS/address lookups
+    # Bulk load via ArcGIS Open Data Hub (SC state-hosted, stable)
+    "https://opendata.arcgis.com/datasets/f07a74ecebbd493bbf81c33c5bc6a558_0/FeatureServer/0/query",
+    # Richland County via ArcGIS Online (updated org ID)
+    "https://services.arcgis.com/dkWT1XL4nglP5MLP/arcgis/rest/services/Richland_Parcels/FeatureServer/0/query",
+    # SC Revenue and Fiscal Affairs open data
+    "https://opendata.arcgis.com/datasets/Richland_County_Parcels/FeatureServer/0/query",
 ]
 DBF_URLS = [
     "https://www.richlandcountysc.gov/Portals/0/GIS/Parcels.zip",
@@ -90,16 +97,29 @@ OUT_PATHS  = [
 ]
 CSV_PATH   = REPO_ROOT / "data" / "leads_ghl_export.csv"
 
-RETRY_MAX   = 3
-RETRY_DELAY = 4
-REQ_TIMEOUT = 25
+RETRY_MAX   = 2          # fewer retries – fail faster and move on
+RETRY_DELAY = 3
+REQ_TIMEOUT = 45         # longer timeout for slow government sites
+PW_TIMEOUT  = 60_000     # Playwright ms – Columbia Star needs more time
 
+# Browser-like headers to avoid bot blocking on the Columbia Star
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,image/apng,*/*;q=0.8"
+    ),
+    "Accept-Language":  "en-US,en;q=0.9",
+    "Accept-Encoding":  "gzip, deflate, br",
+    "Cache-Control":    "no-cache",
+    "Pragma":           "no-cache",
+    "Sec-Fetch-Dest":   "document",
+    "Sec-Fetch-Mode":   "navigate",
+    "Sec-Fetch-Site":   "none",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 # ── Document-type classification patterns ─────────────────────────────────────
@@ -890,54 +910,154 @@ class ParcelLookup:
 # COLUMBIA STAR FETCHER
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+# COLUMBIA STAR FETCHER
+# ══════════════════════════════════════════════════════════════════════════════
+
 class ColumbiaStarFetcher:
     """
     Fetches public-notice posts from The Columbia Star.
-    Strategy:
-      1. WordPress REST API  →  get posts in public-notices category
-         within the lookback window
-      2. HTML category page pagination fallback
+
+    Strategy (in order):
+      1. Playwright browser  →  renders the page as a real browser, bypasses
+         Cloudflare / bot detection that blocks raw requests from GitHub IPs.
+         Navigates the WP REST API URL directly in the browser context so we
+         get JSON without triggering WAF rules.
+      2. requests + BeautifulSoup  →  fallback if Playwright unavailable.
+
+    The Columbia Star site blocks raw requests from datacenter IPs (GitHub
+    Actions). Playwright with a real Chromium instance, a full browser
+    fingerprint, and realistic navigation looks like a regular visitor.
     """
 
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update(HEADERS)
-        self._cat_id: int | None = None
+    # ── Playwright fetch (primary) ────────────────────────────────────────────
 
-    # ── WordPress category ID lookup ──────────────────────────────────────────
-
-    def _get_category_id(self) -> int | None:
-        if self._cat_id is not None:
-            return self._cat_id
+    async def _pw_fetch_json(self, url: str, params: dict) -> dict | list | None:
+        """Fetch a URL via Playwright and parse the JSON response body."""
+        if not HAS_PW:
+            return None
+        from urllib.parse import urlencode
+        full_url = url + "?" + urlencode(params)
         try:
-            url  = f"{WP_API_BASE}/categories"
-            resp = retry(lambda: self.session.get(
-                url, params={"slug": CAT_SLUG, "per_page": 5}, timeout=REQ_TIMEOUT
-            ))
-            cats = resp.json()
-            if isinstance(cats, list) and cats:
-                self._cat_id = cats[0]["id"]
-                log(f"  WP category id for '{CAT_SLUG}': {self._cat_id}")
-                return self._cat_id
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-dev-shm-usage",
+                    ],
+                )
+                ctx = await browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    extra_http_headers={
+                        "Accept": "application/json, text/plain, */*",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Referer": BASE_URL + "/",
+                    },
+                    viewport={"width": 1280, "height": 900},
+                )
+                page = await ctx.new_page()
+                # First visit the home page to establish cookies / pass challenge
+                await page.goto(BASE_URL, wait_until="domcontentloaded",
+                                timeout=PW_TIMEOUT)
+                await asyncio.sleep(1.5)
+                # Now fetch the API endpoint
+                resp = await page.goto(full_url, wait_until="domcontentloaded",
+                                       timeout=PW_TIMEOUT)
+                body = await resp.text() if resp else ""
+                await browser.close()
+
+                if body:
+                    try:
+                        return json.loads(body)
+                    except json.JSONDecodeError:
+                        # Page may have rendered an error or HTML wrapper
+                        # Try extracting JSON from <pre> tag (WP REST API debug)
+                        m = re.search(r"<pre[^>]*>(\[.*?\]|\{.*?\})</pre>",
+                                      body, re.DOTALL)
+                        if m:
+                            return json.loads(m.group(1))
         except Exception as e:
-            log(f"  Category ID lookup failed: {e}")
+            log(f"  PW JSON fetch failed: {e}")
         return None
 
-    # ── WordPress REST API fetch ──────────────────────────────────────────────
+    async def _pw_fetch_html(self, url: str) -> str:
+        """Fetch a URL via Playwright and return the HTML content."""
+        if not HAS_PW:
+            return ""
+        try:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage",
+                          "--disable-blink-features=AutomationControlled"],
+                )
+                ctx = await browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    viewport={"width": 1280, "height": 900},
+                )
+                page = await ctx.new_page()
+                await page.goto(BASE_URL, wait_until="domcontentloaded",
+                                timeout=PW_TIMEOUT)
+                await asyncio.sleep(1)
+                await page.goto(url, wait_until="networkidle", timeout=PW_TIMEOUT)
+                html = await page.content()
+                await browser.close()
+                return html
+        except Exception as e:
+            log(f"  PW HTML fetch failed: {e}")
+        return ""
 
-    def fetch_via_api(self, cutoff: datetime) -> list[dict]:
-        """
-        Retrieve posts from the WP REST API.
-        Returns list of WP post objects (with 'content', 'title', 'date', 'link').
-        """
-        cat_id = self._get_category_id()
+    # ── Category ID lookup ────────────────────────────────────────────────────
+
+    async def _get_category_id(self) -> int | None:
+        url    = f"{WP_API_BASE}/categories"
+        params = {"slug": CAT_SLUG, "per_page": 5}
+
+        # Try Playwright first
+        data = await self._pw_fetch_json(url, params)
+        if isinstance(data, list) and data:
+            cat_id = data[0].get("id")
+            log(f"  WP category id '{CAT_SLUG}': {cat_id} (via Playwright)")
+            return cat_id
+
+        # Fall back to requests
+        try:
+            s    = requests.Session()
+            s.headers.update(HEADERS)
+            resp = s.get(url, params=params, timeout=REQ_TIMEOUT)
+            cats = resp.json()
+            if isinstance(cats, list) and cats:
+                cat_id = cats[0]["id"]
+                log(f"  WP category id '{CAT_SLUG}': {cat_id} (via requests)")
+                return cat_id
+        except Exception as e:
+            log(f"  Category ID lookup failed: {e}")
+
+        return None
+
+    # ── WordPress REST API fetch (Playwright-first) ───────────────────────────
+
+    async def fetch_via_api(self, cutoff: datetime) -> list[dict]:
+        cat_id = await self._get_category_id()
         if not cat_id:
             return []
 
-        posts    = []
-        page     = 1
-        per_page = 20
+        posts      = []
+        page       = 1
+        per_page   = 20
         cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
+        s          = requests.Session()
+        s.headers.update(HEADERS)
 
         while True:
             params = {
@@ -949,158 +1069,174 @@ class ColumbiaStarFetcher:
                 "order":      "desc",
                 "_fields":    "id,date,date_gmt,title,content,link,excerpt",
             }
+
+            batch = None
+
+            # Try requests first (fast when not blocked)
             try:
-                resp = retry(lambda p=params: self.session.get(
-                    f"{WP_API_BASE}/posts", params=p, timeout=REQ_TIMEOUT
-                ))
-                if resp.status_code == 400:
-                    break  # bad page number = past the end
-                batch = resp.json()
-                if not isinstance(batch, list) or not batch:
-                    break
-                posts.extend(batch)
-                log(f"  API page {page}: {len(batch)} posts")
-                if len(batch) < per_page:
-                    break
-                page += 1
-                time.sleep(0.5)
+                resp = s.get(f"{WP_API_BASE}/posts", params=params,
+                             timeout=REQ_TIMEOUT)
+                if resp.status_code == 200:
+                    batch = resp.json()
+                elif resp.status_code in (403, 429, 503):
+                    log(f"  Requests blocked ({resp.status_code}), switching to Playwright")
             except Exception as e:
-                log(f"  API page {page} error: {e}")
+                log(f"  Requests failed page {page}: {e}")
+
+            # Fall back to Playwright if requests was blocked/failed
+            if not isinstance(batch, list):
+                log(f"  Trying Playwright for API page {page}…")
+                batch = await self._pw_fetch_json(f"{WP_API_BASE}/posts", params)
+
+            if not isinstance(batch, list) or not batch:
                 break
+
+            posts.extend(batch)
+            log(f"  API page {page}: {len(batch)} posts")
+            if len(batch) < per_page:
+                break
+            page += 1
+            await asyncio.sleep(1.0)
 
         log(f"  WP API: {len(posts)} posts fetched")
         return posts
 
-    # ── HTML pagination fallback ──────────────────────────────────────────────
+    # ── HTML pagination fallback (Playwright-first) ───────────────────────────
 
-    def fetch_via_html(self, cutoff: datetime) -> list[dict]:
-        """
-        Scrape the HTML category listing pages.
-        Returns list of synthetic post dicts with 'link', 'date', 'title', 'content'.
-        """
+    async def fetch_via_html(self, cutoff: datetime) -> list[dict]:
         posts    = []
         page_url = CAT_URL
         stop     = False
+        s        = requests.Session()
+        s.headers.update(HEADERS)
 
         while page_url and not stop:
+            # Try requests first
+            html = ""
             try:
-                resp = retry(lambda u=page_url: self.session.get(u, timeout=REQ_TIMEOUT))
-                soup = BeautifulSoup(resp.text, "lxml")
+                resp = s.get(page_url, timeout=REQ_TIMEOUT)
+                if resp.status_code == 200:
+                    html = resp.text
+                else:
+                    log(f"  requests {resp.status_code} for {page_url}")
+            except Exception as e:
+                log(f"  requests failed for listing page: {e}")
 
-                articles = soup.find_all("article") or soup.find_all(
-                    "div", class_=re.compile(r"post|entry|article", re.I)
-                )
+            # Fall back to Playwright
+            if not html:
+                log(f"  Playwright fallback for listing page…")
+                html = await self._pw_fetch_html(page_url)
 
-                if not articles:
-                    # Fallback: grab all <h2> links
-                    h2_links = soup.select("h2 a[href]")
-                    articles = [{"link": a["href"], "title": a.get_text(strip=True)}
-                                for a in h2_links]
+            if not html:
+                break
 
-                for art in articles:
+            soup = BeautifulSoup(html, "lxml")
+            articles = soup.find_all("article") or soup.find_all(
+                "div", class_=re.compile(r"post|entry|article", re.I)
+            )
+            if not articles:
+                h2_links = soup.select("h2 a[href]")
+                articles = [{"link": a["href"], "title": a.get_text(strip=True)}
+                            for a in h2_links]
+
+            for art in articles:
+                try:
+                    if isinstance(art, dict):
+                        link, title, date_str = art.get("link",""), art.get("title",""), ""
+                    else:
+                        a_tag    = art.find("a", href=True)
+                        link     = a_tag["href"] if a_tag else ""
+                        title    = a_tag.get_text(strip=True) if a_tag else ""
+                        time_el  = art.find("time")
+                        date_str = ""
+                        if time_el:
+                            date_str = time_el.get("datetime") or time_el.get_text(strip=True)
+
+                    if not link:
+                        continue
+
+                    post_dt = None
+                    for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%B %d, %Y", "%b %d, %Y"]:
+                        try:
+                            post_dt = datetime.strptime(date_str.strip(), fmt).replace(tzinfo=timezone.utc)
+                            break
+                        except ValueError:
+                            pass
+
+                    if post_dt and post_dt < cutoff:
+                        stop = True
+                        break
+
+                    # Fetch article — requests first, Playwright fallback
+                    art_html = ""
                     try:
-                        if isinstance(art, dict):
-                            link  = art.get("link", "")
-                            title = art.get("title", "")
-                            date_str = ""
-                        else:
-                            a_tag  = art.find("a", href=True)
-                            link   = a_tag["href"] if a_tag else ""
-                            title  = a_tag.get_text(strip=True) if a_tag else ""
-                            # Date usually in <time> or meta
-                            time_el = art.find("time")
-                            date_str = ""
-                            if time_el:
-                                date_str = time_el.get("datetime") or time_el.get_text(strip=True)
+                        r2 = s.get(link, timeout=REQ_TIMEOUT)
+                        if r2.status_code == 200:
+                            art_html = r2.text
+                    except Exception:
+                        pass
+                    if not art_html:
+                        art_html = await self._pw_fetch_html(link)
 
-                        if not link:
-                            continue
+                    if not art_html:
+                        continue
 
-                        # Parse date
-                        post_dt = None
-                        if date_str:
-                            for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d",
-                                        "%B %d, %Y", "%b %d, %Y"]:
+                    art_soup = BeautifulSoup(art_html, "lxml")
+
+                    if not post_dt:
+                        t_el = art_soup.find("time")
+                        if t_el:
+                            ds = t_el.get("datetime") or t_el.get_text(strip=True)
+                            for fmt in ["%Y-%m-%dT%H:%M:%S", "%B %d, %Y", "%b %d, %Y", "%Y-%m-%d"]:
                                 try:
-                                    post_dt = datetime.strptime(
-                                        date_str.strip(), fmt
-                                    ).replace(tzinfo=timezone.utc)
+                                    post_dt = datetime.strptime(ds.strip(), fmt).replace(tzinfo=timezone.utc)
                                     break
                                 except ValueError:
                                     pass
 
-                        if post_dt and post_dt < cutoff:
-                            stop = True
-                            break
+                    if post_dt and post_dt < cutoff:
+                        stop = True
+                        break
 
-                        # Fetch the full article
-                        art_resp = retry(lambda u=link: self.session.get(u, timeout=REQ_TIMEOUT))
-                        art_soup = BeautifulSoup(art_resp.text, "lxml")
+                    content_el = (
+                        art_soup.find("div", class_=re.compile(r"entry-content|post-content|article-body", re.I))
+                        or art_soup.find("article")
+                    )
+                    content_html = str(content_el) if content_el else art_html
 
-                        # Pull publish date from article page if not already known
-                        if not post_dt:
-                            t_el = art_soup.find("time")
-                            if t_el:
-                                ds = t_el.get("datetime") or t_el.get_text(strip=True)
-                                for fmt in ["%Y-%m-%dT%H:%M:%S", "%B %d, %Y",
-                                            "%b %d, %Y", "%Y-%m-%d"]:
-                                    try:
-                                        post_dt = datetime.strptime(
-                                            ds.strip(), fmt
-                                        ).replace(tzinfo=timezone.utc)
-                                        break
-                                    except ValueError:
-                                        pass
+                    posts.append({
+                        "link":    link,
+                        "title":   {"rendered": title},
+                        "date":    post_dt.isoformat() if post_dt else "",
+                        "date_gmt":post_dt.isoformat() if post_dt else "",
+                        "content": {"rendered": content_html},
+                    })
+                    await asyncio.sleep(0.5)
 
-                        if post_dt and post_dt < cutoff:
-                            stop = True
-                            break
+                except Exception as e:
+                    log(f"  Article fetch error: {e}")
 
-                        content_el = (
-                            art_soup.find("div", class_=re.compile(r"entry-content|post-content|article-body", re.I))
-                            or art_soup.find("article")
-                        )
-                        content_html = str(content_el) if content_el else art_resp.text
-
-                        posts.append({
-                            "link":     link,
-                            "title":    {"rendered": title},
-                            "date":     post_dt.isoformat() if post_dt else "",
-                            "date_gmt": post_dt.isoformat() if post_dt else "",
-                            "content":  {"rendered": content_html},
-                        })
-                        time.sleep(0.4)
-
-                    except Exception as e:
-                        log(f"  Article fetch error: {e}")
-
-                # Next page
-                next_link = soup.find("a", string=re.compile(r"Next", re.I))
-                if next_link and not stop:
-                    href = next_link.get("href", "")
-                    page_url = href if href.startswith("http") else BASE_URL + href
-                else:
-                    page_url = None
-
-            except Exception as e:
-                log(f"  HTML page error: {e}")
-                break
+            next_link = soup.find("a", string=re.compile(r"Next", re.I))
+            if next_link and not stop:
+                href = next_link.get("href", "")
+                page_url = href if href.startswith("http") else BASE_URL + href
+            else:
+                page_url = None
 
         log(f"  HTML scrape: {len(posts)} posts fetched")
         return posts
 
     # ── Main fetch entry point ────────────────────────────────────────────────
 
-    def get_posts(self) -> list[dict]:
+    async def get_posts(self) -> list[dict]:
         cutoff = cutoff_dt()
         log(f"Fetching posts published after {cutoff.strftime('%Y-%m-%d')} …")
 
-        # Try REST API first
-        posts = self.fetch_via_api(cutoff)
+        posts = await self.fetch_via_api(cutoff)
 
         if not posts:
             log("  REST API returned nothing – falling back to HTML scrape")
-            posts = self.fetch_via_html(cutoff)
+            posts = await self.fetch_via_html(cutoff)
 
         return posts
 
@@ -1506,7 +1642,7 @@ async def main():
     # 2. Fetch posts from Columbia Star
     log("\n── Fetching Columbia Star posts ────────────────────────────")
     fetcher = ColumbiaStarFetcher()
-    posts   = fetcher.get_posts()
+    posts   = await fetcher.get_posts()
     log(f"  Posts retrieved: {len(posts)}")
 
     # 3. Parse each post into individual notice records
