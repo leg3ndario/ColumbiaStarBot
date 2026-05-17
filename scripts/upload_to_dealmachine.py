@@ -34,9 +34,11 @@ def upload_leads():
 
             try:
                 response = requests.post(URL, json=payload, headers=headers)
+                data = response.json() # Parse the response
                 
                 if response.status_code in [200, 201]:
-                    print(f"Success: {row['Property Address']}")
+                    # This will print the DealMachine ID and Status
+                    print(f"Success: {row['Property Address']} | DM_ID: {data.get('data', {}).get('id')} | Status: {data.get('data', {})} ")
                 else:
                     print(f"Failed {row['Property Address']}: {response.status_code} - {response.text}")
             
