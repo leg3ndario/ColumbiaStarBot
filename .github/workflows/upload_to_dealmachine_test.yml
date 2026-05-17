@@ -1,14 +1,35 @@
-# ... your existing generation steps ...
+name: Test DealMachine Upload
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+on:
+  # This allows you to run the test manually from the Actions tab
+  workflow_dispatch: 
 
-    - name: Install dependencies
-      run: pip install requests
+jobs:
+  test-upload:
+    runs-on: ubuntu-latest
 
-    - name: Upload to DealMachine
-      env:
-        DEALMACHINE_API_KEY: ${{ secrets.DEALMACHINE_API_KEY }}
-      run: python upload_to_dealmachine.py
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Verify CSV exists
+        run: |
+          if [ -f "leads.csv" ]; then
+            echo "data/leads_ghl_export.csv found, proceeding..."
+          else
+            echo "leads.csv NOT found in data directory!"
+            exit 1
+          fi
+
+      - name: Run Upload Script
+        env:
+          DEALMACHINE_API_KEY: ${{ secrets.DEALMACHINE_API_KEY }}
+        run: python scripts/upload_to_dealmachine.py
