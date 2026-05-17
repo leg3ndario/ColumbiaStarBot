@@ -8,10 +8,10 @@ import re
 API_KEY = os.getenv('DEALMACHINE_API_KEY')
 CSV_FILE = 'data/leads_ghl_export.csv' 
 BASE_URL = "https://api.dealmachine.com/public/v1/leads"
-LIST_ID = "1254885" # Richland_Intel
+LIST_ID = "1254885" 
 
 def clean_address(addr):
-    # Strip parentheses and standardize units
+    # Remove (Zip) and handle "Unit" -> "#"
     addr = re.sub(r'\(.*?\)', '', addr)
     addr = re.sub(r'\bUNIT\b', '#', addr, flags=re.IGNORECASE)
     return addr.strip().strip(',')
@@ -31,7 +31,6 @@ def upload_leads():
         
         for row in reader:
             raw_addr = row.get('Property Address', '').strip()
-            # Basic validation: must start with a digit and be reasonably short
             if not raw_addr or not raw_addr[0].isdigit() or len(raw_addr) > 120:
                 continue
 
@@ -52,34 +51,40 @@ def upload_leads():
             try:
                 # 1. ATTEMPT TO CREATE (POST)
                 response = requests.post(f"{BASE_URL}/", json=payload, headers=headers)
-                res_data = response.json()
+                res_json = response.json()
                 
-                # Check for ID and Error message
-                lead_id = res_data.get('data', {}).get('id') if isinstance(res_data.get('data'), dict) else None
-                error_info = res_data.get('error', {})
+                # --- ROBUST DATA EXTRACTION ---
+                # Handle cases where API returns a list or a dict
+                lead_data = {}
+                if isinstance(res_json, list) and len(res_json) > 0:
+                    lead_data = res_json[0]
+                elif isinstance(res_json, dict):
+                    lead_data = res_json.get('data', {})
+                    if isinstance(lead_data, list) and len(lead_data) > 0:
+                        lead_data = lead_data[0]
+                
+                error_info = res_json.get('error', {}) if isinstance(res_json, dict) else {}
                 error_msg = error_info.get('message', '') if isinstance(error_info, dict) else str(error_info)
+                
+                lead_id = lead_data.get('id') if isinstance(lead_data, dict) else None
 
+                # 2. EVALUATE OUTCOME
                 if response.status_code in [200, 201] and lead_id:
                     print(f"✅ Added: {addr}")
                 
-                elif "already added" in error_msg.lower() or lead_id:
-                    # 2. IF EXISTS, USE THE ADD-TO-LIST ENDPOINT (FORM DATA)
-                    # Use lead_id from the response
-                    target_id = lead_id or res_data.get('data', {}).get('id')
+                elif ("already added" in error_msg.lower() or lead_id) and lead_id:
+                    # 3. IF ALREADY EXISTS, FORCE TO LIST (FORM DATA)
+                    # Documentation: /public/v1/leads/:lead_id/add-to-list
+                    add_url = f"{BASE_URL}/{lead_id}/add-to-list"
+                    form_payload = {"list_ids": LIST_ID}
                     
-                    if target_id:
-                        add_to_list_url = f"{BASE_URL}/{target_id}/add-to-list"
-                        # Documentation shows this specific endpoint uses Form Data (multipart/form-data)
-                        form_data = {'list_ids': LIST_ID}
-                        
-                        update_res = requests.post(add_to_list_url, data=form_data, headers=headers)
-                        
-                        if update_res.status_code == 200:
-                            print(f"🔄 Synced: {addr} -> Richland_Intel")
-                        else:
-                            print(f"⚠️ Found {addr}, but List Sync failed: {update_res.text}")
+                    # Note: We use data= (Form Data) here to match DM docs
+                    update_res = requests.post(add_url, data=form_payload, headers=headers)
+                    
+                    if update_res.status_code == 200:
+                        print(f"🔄 Synced: {addr} -> Richland_Intel")
                     else:
-                        print(f"➖ Skipped: {addr} (Could not retrieve ID)")
+                        print(f"⚠️ Found {addr}, but List Sync failed.")
                 
                 else:
                     print(f"❌ Failed: {addr} | {error_msg}")
