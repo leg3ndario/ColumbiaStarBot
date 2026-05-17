@@ -98,4 +98,4 @@ jobs:
       - name: Upload to DealMachine
         env:
           DEALMACHINE_API_KEY: ${{ secrets.DEALMACHINE_API_KEY }}
-        run: python upload_to_dealmachine.py
+        run: python scripts/upload_to_dealmachine.py
