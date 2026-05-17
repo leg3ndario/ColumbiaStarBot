@@ -35,7 +35,7 @@ def upload_leads():
                 "state": state,
                 "zip": zip_code,
                 "skip_trace": True,
-                "list_id": 
+                "list_id": 1254885
             }
             
             # THE FIX: Standard Bearer Token Authorization
