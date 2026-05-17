@@ -16,14 +16,11 @@ def clean_address(addr):
     return addr.strip().strip(',')
 
 def get_lead_id_by_address(address, headers):
-    """Searches for an existing lead ID by street address."""
     search_url = f"{BASE_URL}/"
-    # Try searching the specific street address
     params = {"search": address, "per_page": 1}
     try:
         res = requests.get(search_url, params=params, headers=headers)
-        res_data = res.json()
-        data = res_data.get('data', [])
+        data = res.json().get('data', [])
         if isinstance(data, list) and len(data) > 0:
             return data[0].get('id')
     except:
@@ -35,15 +32,16 @@ def upload_leads():
         print("❌ API Key missing")
         return
 
-    # Base headers for JSON calls
+    # Standard JSON headers
     json_headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
     
-    # Headers for Form Data calls (Let requests handle Content-Type for boundaries)
-    form_headers = {
+    # Strictly for the form-data call - NO Content-Type header
+    # Let the requests library generate the multipart boundary automatically
+    auth_header = {
         "Authorization": f"Bearer {API_KEY}",
         "Accept": "application/json"
     }
@@ -60,7 +58,6 @@ def upload_leads():
             city = row.get('Property City', 'Columbia').strip()
             zip_code = row.get('Property Zip', '').strip()
             
-            # Initial Creation Payload (JSON)
             payload = {
                 "address": addr,
                 "city": city,
@@ -75,48 +72,37 @@ def upload_leads():
                 response = requests.post(f"{BASE_URL}/", json=payload, headers=json_headers)
                 res_json = response.json()
                 
-                # Check for existing ID or newly created ID
+                # Check for existing ID
                 lead_data = res_json.get('data', {})
                 if isinstance(lead_data, list) and len(lead_data) > 0:
                     lead_data = lead_data[0]
                 
                 lead_id = lead_data.get('id') if isinstance(lead_data, dict) else None
-                error_info = res_json.get('error', {}) if isinstance(res_json, dict) else {}
-                error_msg = str(error_info.get('message', '')) if isinstance(error_info, dict) else str(error_info)
-
-                # 2. EVALUATE: IF SUCCESSFUL ADD
-                if response.status_code in [200, 201] and lead_id:
-                    # Note: Sometimes 200 Success still doesn't add to list if lead exists
-                    # So we fall through to the sync logic to be absolutely sure
-                    pass 
-
-                # 3. IF ALREADY EXISTS OR WE HAVE AN ID, FORCE TO LIST
-                # Get the ID if we don't have it yet
+                
+                # 2. FORCE SYNC REGARDLESS OF POST OUTCOME
                 target_id = lead_id if lead_id else get_lead_id_by_address(addr, json_headers)
 
                 if target_id:
-                    # Endpoint: /public/v1/leads/:lead_id/add-to-list
                     add_url = f"{BASE_URL}/{target_id}/add-to-list"
                     
-                    # MATCHING DOCUMENTATION EXACTLY:
-                    # Key is 'list_ids' (plural) and value is the ID string
-                    form_payload = {"list_ids": str(LIST_ID)}
+                    # QUIRK FIX: We wrap the ID in quotes inside the string to match the 
+                    # --form 'list_ids="817332"' documentation exactly.
+                    # We also use a list of tuples for files/data to ensure multipart format.
+                    form_data = [('list_ids', f'"{LIST_ID}"')]
                     
-                    # POST with data= sends as multipart/form-data
-                    update_res = requests.post(add_url, data=form_payload, headers=form_headers)
+                    # POST using files= or data= without a Content-Type header 
+                    # forces the 'multipart/form-data' boundary DM wants.
+                    update_res = requests.post(add_url, files=form_data, headers=auth_header)
                     
                     if update_res.status_code == 200:
-                        print(f"🔄 Synced: {addr} -> Richland_Intel")
+                        print(f"🔄 Forced Sync: {addr}")
                     else:
-                        print(f"✅ Exists: {addr} | List Update Status: {update_res.status_code}")
+                        print(f"✅ Exists: {addr} | Manual check needed.")
                 else:
-                    if "not found" in error_msg.lower():
-                        print(f"❌ Failed: {addr} (Property not found)")
-                    else:
-                        print(f"➖ Skipped: {addr} (ID not found)")
+                    print(f"❌ Not Found: {addr}")
             
             except Exception as e:
-                print(f"⚠️ System Error: {addr} | {str(e)}")
+                print(f"⚠️ Error: {addr} | {str(e)}")
 
             time.sleep(0.5)
 
